@@ -13,7 +13,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterator, List, Sequence
 
+from copy import copy, deepcopy
+
 from openpyxl import Workbook, load_workbook
+from openpyxl.cell.cell import MergedCell
+from openpyxl.utils.cell import column_index_from_string
 from openpyxl.worksheet.worksheet import Worksheet
 
 MAX_SHEET_NAME_LENGTH = 31
@@ -161,10 +165,80 @@ def _copy_sheet_contents(source: Worksheet, target: Worksheet) -> None:
         return
 
     for row in source.iter_rows():
-        target.append([cell.value for cell in row])
+        for cell in row:
+            if isinstance(cell, MergedCell):
+                continue
+
+            column_index = getattr(cell, "col_idx", None)
+            if column_index is None:
+                column = cell.column
+                column_index = column if isinstance(column, int) else column_index_from_string(column)
+
+            target_cell = target.cell(row=cell.row, column=column_index)
+            target_cell.value = cell.value
+            target_cell.data_type = cell.data_type
+            target_cell.number_format = cell.number_format
+            target_cell.font = copy(cell.font)
+            target_cell.fill = copy(cell.fill)
+            target_cell.border = copy(cell.border)
+            target_cell.alignment = copy(cell.alignment)
+            target_cell.protection = copy(cell.protection)
+            if cell.comment is not None:
+                target_cell.comment = copy(cell.comment)
+            if cell.hyperlink is not None:
+                target_cell.hyperlink = copy(cell.hyperlink)
 
     for merged_range in source.merged_cells.ranges:
         target.merge_cells(str(merged_range))
+
+    for row_idx, row_dimension in source.row_dimensions.items():
+        target_dimension = target.row_dimensions[row_idx]
+        target_dimension.height = row_dimension.height
+        target_dimension.hidden = row_dimension.hidden
+        target_dimension.outlineLevel = row_dimension.outlineLevel
+
+    for column_key, column_dimension in source.column_dimensions.items():
+        target_dimension = target.column_dimensions[column_key]
+        target_dimension.width = column_dimension.width
+        target_dimension.hidden = column_dimension.hidden
+        target_dimension.outlineLevel = column_dimension.outlineLevel
+
+    if source.conditional_formatting:
+        for conditional_range, rules in source.conditional_formatting._cf_rules.items():
+            for rule in rules:
+                target.conditional_formatting.add(str(conditional_range.sqref), deepcopy(rule))
+
+    parent = target.parent
+    existing_table_names: set[str] = set()
+    if parent is not None:
+        for worksheet in parent.worksheets:
+            existing_table_names.update(
+                table.displayName for table in worksheet.tables.values() if table.displayName
+            )
+
+    for table in source.tables.values():
+        new_table = deepcopy(table)
+        base_name = table.displayName or table.name or "Table"
+        candidate = base_name
+        suffix = 1
+        while candidate in existing_table_names:
+            candidate = f"{base_name}_{suffix}"
+            suffix += 1
+        existing_table_names.add(candidate)
+        new_table.displayName = candidate
+        new_table.name = candidate
+        target.add_table(new_table)
+
+    target.HeaderFooter = deepcopy(source.HeaderFooter)
+
+    target.sheet_properties.tabColor = (
+        copy(source.sheet_properties.tabColor) if source.sheet_properties.tabColor else None
+    )
+
+    if source.auto_filter and (
+        source.auto_filter.ref or source.auto_filter.filterColumn or source.auto_filter.sortState
+    ):
+        target.auto_filter = deepcopy(source.auto_filter)
 
 
 def _parse_args(args: Sequence[str]) -> argparse.Namespace:
