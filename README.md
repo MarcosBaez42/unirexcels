@@ -1,0 +1,50 @@
+# Unir Exceles en un solo archivo
+
+Este repositorio incluye un script sencillo para combinar varias hojas de
+cálculo de Excel en un único libro. Cada archivo de entrada genera una
+hoja en el libro consolidado utilizando el mismo nombre del archivo (sin
+la extensión).
+
+## Requisitos
+
+- Python 3.10 o superior.
+- [openpyxl](https://openpyxl.readthedocs.io/) para manipular los
+  archivos de Excel.
+
+Puedes instalar la dependencia principal con:
+
+```bash
+pip install -r requirements.txt
+```
+
+## Uso
+
+1. Coloca todos tus archivos `.xlsx` en una misma carpeta.
+2. Ejecuta el script indicando la carpeta de origen y la ruta del archivo
+   combinado. Por ejemplo:
+
+```bash
+python merge_excel_files.py carpeta/de/origen --output combinado.xlsx
+```
+
+Opciones disponibles:
+
+- `--pattern`: patrón *glob* para filtrar los archivos (por defecto
+  `*.xlsx`).
+- `--recursive`: busca archivos en subcarpetas.
+- `--values-only`: copia únicamente los valores calculados en lugar de
+  las fórmulas.
+
+El script creará un libro de Excel con cada archivo en una hoja distinta,
+utilizando el nombre del archivo como nombre de la hoja (se aplican las
+restricciones de Excel respecto a longitud y caracteres válidos).
+
+## Pruebas
+
+Para ejecutar los tests automatizados se necesita instalar las
+dependencias de desarrollo:
+
+```bash
+pip install -r requirements-dev.txt
+pytest
+```
