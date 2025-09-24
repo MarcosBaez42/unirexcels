@@ -22,22 +22,11 @@ from openpyxl.worksheet.worksheet import Worksheet
 
 MAX_SHEET_NAME_LENGTH = 31
 _INVALID_SHEET_CHARS = set("[]:*?/\\")
-DEFAULT_SOURCE_DIRECTORY = Path(r"C:\Users\marco\Documents\unirexcels\mis_excels\Reportes\REPORT")
-
-def _resolve_execution_paths(args: argparse.Namespace, script_path: Path) -> tuple[Path, Path, str | None]:
-    script_directory = script_path.parent
-    default_output_name = Path("combined.xlsx")
-
-    source_directory = args.source_directory or DEFAULT_SOURCE_DIRECTORY
-    output_path = args.output or default_output_name
-    if args.source_directory is None and not output_path.is_absolute():
-        output_path = script_directory / output_path
-    message = None if args.source_directory else (
-        "No source directory provided. Using the default folder:\n"
-        f"  {source_directory}\n"
-    )
-
-    return source_directory, output_path, message
+# Folder used when the script is executed without explicitly providing a
+# ``source_directory``.  The value can be absolute or relative to the location
+# of this script.  If the path does not exist at runtime the script falls back to
+# using the directory that contains ``merge_excel_files.py``.
+DEFAULT_SOURCE_DIRECTORY = Path("mis_excels/Reportes/REPORTES UNISANGIL")
 
 @dataclass(frozen=True)
 class MergedSheet:
@@ -306,19 +295,31 @@ def _resolve_execution_paths(
     script_directory = script_path.parent
     default_output_name = Path("combined.xlsx")
 
-    if args.source_directory is None:
-        source_directory = script_directory
-        output_path = args.output or default_output_name
-        if not output_path.is_absolute():
-            output_path = script_directory / output_path
-        message = (
-            "No source directory provided. Using the folder that contains this "
-            f"script:\n  {source_directory}\n"
-        )
-    else:
+    if args.source_directory is not None:
         source_directory = args.source_directory
         output_path = args.output or default_output_name
         message = None
+    else:
+        candidate: Path | None = DEFAULT_SOURCE_DIRECTORY
+        if candidate is not None and not candidate.is_absolute():
+            candidate = (script_directory / candidate).resolve()
+
+        if candidate is not None and candidate.exists():
+            source_directory = candidate
+            message = (
+                "No source directory provided. Using the default folder:\n"
+                f"  {source_directory}\n"
+            )
+        else:
+            source_directory = script_directory
+            message = (
+                "No source directory provided. Using the folder that contains this "
+                f"script:\n  {source_directory}\n"
+            )
+
+        output_path = args.output or default_output_name
+        if not output_path.is_absolute():
+            output_path = script_directory / output_path
 
     return source_directory, output_path, message
 
