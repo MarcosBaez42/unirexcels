@@ -22,7 +22,22 @@ from openpyxl.worksheet.worksheet import Worksheet
 
 MAX_SHEET_NAME_LENGTH = 31
 _INVALID_SHEET_CHARS = set("[]:*?/\\")
+DEFAULT_SOURCE_DIRECTORY = Path(r"C:\Users\marco\Documents\unirexcels\mis_excels\Reportes\REPORT")
 
+def _resolve_execution_paths(args: argparse.Namespace, script_path: Path) -> tuple[Path, Path, str | None]:
+    script_directory = script_path.parent
+    default_output_name = Path("combined.xlsx")
+
+    source_directory = args.source_directory or DEFAULT_SOURCE_DIRECTORY
+    output_path = args.output or default_output_name
+    if args.source_directory is None and not output_path.is_absolute():
+        output_path = script_directory / output_path
+    message = None if args.source_directory else (
+        "No source directory provided. Using the default folder:\n"
+        f"  {source_directory}\n"
+    )
+
+    return source_directory, output_path, message
 
 @dataclass(frozen=True)
 class MergedSheet:
