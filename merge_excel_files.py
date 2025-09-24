@@ -250,6 +250,7 @@ def _parse_args(args: Sequence[str]) -> argparse.Namespace:
     )
     parser.add_argument(
         "source_directory",
+        nargs="?",
         type=Path,
         help="Folder containing the Excel files to merge",
     )
@@ -257,8 +258,12 @@ def _parse_args(args: Sequence[str]) -> argparse.Namespace:
         "-o",
         "--output",
         type=Path,
-        default=Path("combined.xlsx"),
-        help="Path to the consolidated Excel workbook",
+        default=None,
+        help=(
+            "Path to the consolidated Excel workbook. Default: 'combined.xlsx' in "
+            "the current directory (or in the script directory when no source "
+            "folder is provided)."
+        ),
     )
     parser.add_argument(
         "-p",
@@ -280,12 +285,41 @@ def _parse_args(args: Sequence[str]) -> argparse.Namespace:
     return parser.parse_args(args)
 
 
+def _resolve_execution_paths(
+    args: argparse.Namespace, script_path: Path
+) -> tuple[Path, Path, str | None]:
+    script_directory = script_path.parent
+    default_output_name = Path("combined.xlsx")
+
+    if args.source_directory is None:
+        source_directory = script_directory
+        output_path = args.output or default_output_name
+        if not output_path.is_absolute():
+            output_path = script_directory / output_path
+        message = (
+            "No source directory provided. Using the folder that contains this "
+            f"script:\n  {source_directory}\n"
+        )
+    else:
+        source_directory = args.source_directory
+        output_path = args.output or default_output_name
+        message = None
+
+    return source_directory, output_path, message
+
+
 def main(argv: Sequence[str] | None = None) -> int:
-    args = _parse_args(argv or sys.argv[1:])
+    if argv is None:
+        argv = sys.argv[1:]
+    args = _parse_args(argv)
+    script_path = Path(__file__).resolve()
+    source_directory, output_path, info_message = _resolve_execution_paths(args, script_path)
+    if info_message:
+        sys.stdout.write(info_message)
     try:
         merged = merge_excel_files(
-            source_directory=args.source_directory,
-            output_path=args.output,
+            source_directory=source_directory,
+            output_path=output_path,
             pattern=args.pattern,
             recursive=args.recursive,
             values_only=args.values_only,
@@ -298,7 +332,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     file_count = len(merged)
     plural = "s" if file_count != 1 else ""
     sys.stdout.write(
-        f"Merged {file_count} Excel file{plural} into '{args.output}'.\n"
+        f"Merged {file_count} Excel file{plural} into '{output_path}'.\n"
     )
     return 0
 

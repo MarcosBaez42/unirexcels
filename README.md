@@ -39,6 +39,14 @@ El script creará un libro de Excel con cada archivo en una hoja distinta,
 utilizando el nombre del archivo como nombre de la hoja (se aplican las
 restricciones de Excel respecto a longitud y caracteres válidos).
 
+### Ejecución directa (doble clic)
+
+Si ejecutas `merge_excel_files.py` sin parámetros, el programa tomará como
+origen la carpeta donde está guardado el propio script y guardará el
+resultado en `combined.xlsx` dentro de esa misma carpeta. Esta modalidad es
+útil para usuarios sin experiencia técnica: basta con copiar todos los
+Excel junto al script y abrir el archivo de Python con doble clic.
+
 ## Pruebas
 
 Para ejecutar los tests automatizados se necesita instalar las

@@ -13,6 +13,7 @@ from openpyxl.formatting.rule import CellIsRule
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Protection, Side
 from openpyxl.worksheet.table import Table, TableStyleInfo
 
+import merge_excel_files as merge_module
 from merge_excel_files import merge_excel_files
 
 
@@ -173,3 +174,61 @@ def test_merge_excel_files_preserves_styles_and_features(tmp_path: Path) -> None
         assert merged_sheet.auto_filter.ref == "A1:C2"
     finally:
         merged.close()
+
+
+def test_main_defaults_to_script_directory(monkeypatch, tmp_path: Path) -> None:
+    calls: dict[str, object] = {}
+
+    def fake_merge(
+        *,
+        source_directory: Path,
+        output_path: Path,
+        pattern: str,
+        recursive: bool,
+        values_only: bool,
+    ) -> list[merge_module.MergedSheet]:
+        calls["source_directory"] = source_directory
+        calls["output_path"] = output_path
+        return []
+
+    monkeypatch.setattr(merge_module, "merge_excel_files", fake_merge)
+    script_file = tmp_path / "merge_excel_files.py"
+    script_file.write_text("print('placeholder')\n")
+    monkeypatch.setattr(merge_module, "__file__", str(script_file))
+
+    exit_code = merge_module.main([])
+
+    assert exit_code == 0
+    assert calls["source_directory"] == tmp_path
+    assert calls["output_path"] == tmp_path / "combined.xlsx"
+
+
+def test_main_uses_cli_arguments(monkeypatch, tmp_path: Path) -> None:
+    recorded: dict[str, object] = {}
+
+    def fake_merge(
+        *,
+        source_directory: Path,
+        output_path: Path,
+        pattern: str,
+        recursive: bool,
+        values_only: bool,
+    ) -> list[merge_module.MergedSheet]:
+        recorded["source_directory"] = source_directory
+        recorded["output_path"] = output_path
+        recorded["pattern"] = pattern
+        recorded["recursive"] = recursive
+        recorded["values_only"] = values_only
+        return [merge_module.MergedSheet(source=Path("alpha.xlsx"), sheet_name="alpha")]
+
+    monkeypatch.setattr(merge_module, "merge_excel_files", fake_merge)
+
+    args = [str(tmp_path), "--output", "out.xlsx", "--pattern", "*.xlsm", "--recursive", "--values-only"]
+    exit_code = merge_module.main(args)
+
+    assert exit_code == 0
+    assert recorded["source_directory"] == tmp_path
+    assert recorded["output_path"] == Path("out.xlsx")
+    assert recorded["pattern"] == "*.xlsm"
+    assert recorded["recursive"] is True
+    assert recorded["values_only"] is True
