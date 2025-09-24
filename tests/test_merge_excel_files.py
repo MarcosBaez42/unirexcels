@@ -74,6 +74,26 @@ def test_merge_excel_files_handles_duplicate_names(tmp_path: Path) -> None:
     assert second_value == 2
 
 
+def test_merge_excel_files_searches_nested_directories_when_needed(tmp_path: Path) -> None:
+    base_dir = tmp_path / "mis_excels" / "Reportes"
+    nested_dir = base_dir / "Region" / "Daily"
+    nested_dir.mkdir(parents=True)
+    nested_file = nested_dir / "ventas.xlsx"
+    _create_workbook(nested_file, [["Ventas"], [100]])
+
+    output = base_dir / "combined.xlsx"
+    merged = merge_excel_files(base_dir, output)
+
+    assert [entry.source for entry in merged] == [nested_file]
+    assert [entry.sheet_name for entry in merged] == ["ventas"]
+
+    workbook = load_workbook(output)
+    try:
+        assert workbook.sheetnames == ["ventas"]
+    finally:
+        workbook.close()
+
+
 def test_merge_excel_files_fails_when_no_files(tmp_path: Path) -> None:
     output = tmp_path / "merged.xlsx"
     with pytest.raises(ValueError):

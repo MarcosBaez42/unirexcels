@@ -26,7 +26,7 @@ _INVALID_SHEET_CHARS = set("[]:*?/\\")
 # ``source_directory``.  The value can be absolute or relative to the location
 # of this script.  If the path does not exist at runtime the script falls back to
 # using the directory that contains ``merge_excel_files.py``.
-DEFAULT_SOURCE_DIRECTORY = Path("mis_excels/Reportes/REPORTES UNISANGIL")
+DEFAULT_SOURCE_DIRECTORY = Path("mis_excels/Reportes")
 
 @dataclass(frozen=True)
 class MergedSheet:
@@ -86,6 +86,10 @@ def merge_excel_files(
 
     candidates = _collect_excel_files(source_directory, pattern, recursive)
     files = [path for path in candidates if path.resolve() != resolved_output]
+
+    if not files and not recursive:
+        recursive_candidates = _collect_excel_files(source_directory, pattern, True)
+        files = [path for path in recursive_candidates if path.resolve() != resolved_output]
 
     if not files:
         raise ValueError(
