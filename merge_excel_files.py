@@ -11,7 +11,7 @@ import argparse
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterator, List, Sequence
+from typing import Any, Iterator, List, Sequence
 
 from copy import copy, deepcopy
 
@@ -26,7 +26,7 @@ _INVALID_SHEET_CHARS = set("[]:*?/\\")
 # ``source_directory``.  The value can be absolute or relative to the location
 # of this script.  If the path does not exist at runtime the script falls back to
 # using the directory that contains ``merge_excel_files.py``.
-DEFAULT_SOURCE_DIRECTORY = Path("mis_excels/Reportes")
+DEFAULT_SOURCE_DIRECTORY = Path("mis_excels")
 
 @dataclass(frozen=True)
 class MergedSheet:
@@ -39,7 +39,7 @@ class MergedSheet:
 def merge_excel_files(
     source_directory: Path,
     output_path: Path,
-    pattern: str = "*.xlsx",
+    pattern: str = "*.xls*",
     recursive: bool = False,
     values_only: bool = False,
 ) -> List[MergedSheet]:
@@ -54,13 +54,16 @@ def merge_excel_files(
         directory will be created automatically if it does not exist.
     pattern:
         Glob expression used to filter the files inside ``source_directory``.
-        Defaults to ``"*.xlsx"`` which will match the most common Excel
-        workbooks.  The comparison is case-sensitive.
+        Defaults to ``"*.xls*"`` which will match the most common Excel
+        workbooks, including ``.xls`` and ``.xlsx`` files.  The comparison is
+        case-sensitive.
     recursive:
         When ``True`` the pattern is applied recursively.
     values_only:
         When ``True`` formulas in the source sheets are replaced by their
-        last cached value.  When ``False`` formulas are preserved.
+        last cached value.  When ``False`` formulas are preserved when the
+        file format supports it.  Legacy ``.xls`` files always fall back to
+        their cached values because the formula text is not available.
 
     Returns
     -------
@@ -107,7 +110,7 @@ def merge_excel_files(
 
     for file_path in files:
         sheet_title = _build_sheet_title(file_path.stem, existing_names)
-        source_wb = load_workbook(filename=file_path, data_only=values_only)
+        source_wb = _load_source_workbook(file_path, values_only=values_only)
         try:
             source_sheet = source_wb.worksheets[0]
             target_sheet = workbook.create_sheet(title=sheet_title)
@@ -120,6 +123,70 @@ def merge_excel_files(
     workbook.save(output_path)
 
     return merged_sheets
+
+
+def _load_source_workbook(file_path: Path, values_only: bool) -> Workbook:
+    suffix = file_path.suffix.lower()
+    if suffix == ".xls":
+        return _load_xls_workbook(file_path)
+    if suffix not in {".xlsx", ".xlsm", ".xltx", ".xltm", ".xlam"}:
+        raise ValueError(f"Unsupported Excel format '{file_path.suffix}'")
+    return load_workbook(filename=file_path, data_only=values_only)
+
+
+def _load_xls_workbook(file_path: Path) -> Workbook:
+    try:
+        import xlrd
+    except ImportError as exc:  # pragma: no cover - dependency missing in runtime env
+        raise RuntimeError(
+            "Reading '.xls' files requires the 'xlrd' package. Install it to merge these files."
+        ) from exc
+
+    book = xlrd.open_workbook(file_path, formatting_info=True)
+    sheet = book.sheet_by_index(0)
+
+    workbook = Workbook()
+    sheet_name = sheet.name.strip() or workbook.active.title
+    worksheet = workbook.active
+    worksheet.title = sheet_name[:MAX_SHEET_NAME_LENGTH]
+
+    for row_idx in range(sheet.nrows):
+        for col_idx in range(sheet.ncols):
+            value = _convert_xls_cell_value(sheet, row_idx, col_idx, book.datemode)
+            if value is None:
+                continue
+            worksheet.cell(row=row_idx + 1, column=col_idx + 1, value=value)
+
+    for row_low, row_high, col_low, col_high in getattr(sheet, "merged_cells", []):
+        worksheet.merge_cells(
+            start_row=row_low + 1,
+            end_row=row_high,
+            start_column=col_low + 1,
+            end_column=col_high,
+        )
+
+    release_resources = getattr(book, "release_resources", None)
+    if callable(release_resources):
+        release_resources()
+
+    return workbook
+
+
+def _convert_xls_cell_value(sheet: Any, row: int, column: int, datemode: int) -> object | None:
+    import xlrd
+    from xlrd import xldate
+
+    cell = sheet.cell(row, column)
+    if cell.ctype == xlrd.XL_CELL_EMPTY:
+        return None
+    if cell.ctype == xlrd.XL_CELL_BOOLEAN:
+        return bool(cell.value)
+    if cell.ctype == xlrd.XL_CELL_DATE:
+        try:
+            return xldate.xldate_as_datetime(cell.value, datemode)
+        except (TypeError, ValueError):
+            return cell.value
+    return cell.value
 
 
 def _collect_excel_files(directory: Path, pattern: str, recursive: bool) -> List[Path]:
@@ -276,8 +343,8 @@ def _parse_args(args: Sequence[str]) -> argparse.Namespace:
     parser.add_argument(
         "-p",
         "--pattern",
-        default="*.xlsx",
-        help="Glob pattern used to filter Excel files (default: '*.xlsx')",
+        default="*.xls*",
+        help="Glob pattern used to filter Excel files (default: '*.xls*')",
     )
     parser.add_argument(
         "-r",

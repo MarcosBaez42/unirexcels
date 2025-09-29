@@ -1,3 +1,4 @@
+from datetime import datetime
 from pathlib import Path
 import sys
 
@@ -252,3 +253,26 @@ def test_main_uses_cli_arguments(monkeypatch, tmp_path: Path) -> None:
     assert recorded["pattern"] == "*.xlsm"
     assert recorded["recursive"] is True
     assert recorded["values_only"] is True
+
+
+def test_merge_excel_files_supports_xls(tmp_path: Path) -> None:
+    fixture = Path(__file__).resolve().parent / "fixtures" / "sample.xls"
+    destination = tmp_path / "sample.xls"
+    destination.write_bytes(fixture.read_bytes())
+
+    output = tmp_path / "combined.xlsx"
+    merged = merge_excel_files(tmp_path, output)
+
+    assert [entry.source.name for entry in merged] == ["sample.xls"]
+    assert [entry.sheet_name for entry in merged] == ["sample"]
+
+    workbook = load_workbook(output)
+    try:
+        sheet = workbook["sample"]
+        assert sheet["A1"].value == "Name"
+        assert sheet["B2"].value == pytest.approx(123.45)
+        assert sheet["C2"].value == datetime(2023, 1, 15)
+        merged_ranges = {str(rng) for rng in sheet.merged_cells.ranges}
+        assert "A3:C3" in merged_ranges
+    finally:
+        workbook.close()
